@@ -1,0 +1,2733 @@
+{
+  "datasets": [
+    {
+      "name": "exec_kpis",
+      "displayName": "Executive KPIs",
+      "queryLines": [
+        "SELECT\n",
+        "  fo.order_purchase_date AS order_purchase_date,\n",
+        "  ROUND(SUM(fo.order_revenue), 2) AS product_revenue,\n",
+        "  COUNT(*) AS total_orders,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN fo.order_status = 'delivered' THEN 1\n",
+        "    END\n",
+        "  ) AS delivered_orders,\n",
+        "  ROUND(SUM(fo.order_revenue) / COUNT(*), 2) AS avg_order_value,\n",
+        "  ROUND(\n",
+        "    COUNT(\n",
+        "      CASE\n",
+        "        WHEN fo.order_status = 'delivered' THEN 1\n",
+        "      END\n",
+        "    )\n",
+        "      * 100.0\n",
+        "      / COUNT(*),\n",
+        "    2\n",
+        "  ) AS delivery_rate_pct,\n",
+        "  fi.items_sold\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_orders fo\n",
+        "    JOIN (\n",
+        "      SELECT\n",
+        "        order_purchase_date AS day_date,\n",
+        "        COUNT(*) AS items_sold\n",
+        "      FROM\n",
+        "        ecommerce_data.gold.fact_order_items\n",
+        "      GROUP BY\n",
+        "        1\n",
+        "    ) fi\n",
+        "      ON fo.order_purchase_date = fi.day_date\n",
+        "GROUP BY\n",
+        "  1,\n",
+        "  fi.items_sold\n",
+        "ORDER BY\n",
+        "  1"
+      ],
+      "columns": [
+        {
+          "displayName": "aov",
+          "description": "Average Order Value = total product revenue / total orders",
+          "expression": "SUM(`product_revenue`) / SUM(`total_orders`)"
+        },
+        {
+          "displayName": "delivery_rate",
+          "description": "Delivery Rate = delivered orders / total orders × 100",
+          "expression": "SUM(`delivered_orders`) * 100.0 / SUM(`total_orders`)"
+        }
+      ]
+    },
+    {
+      "name": "monthly_revenue",
+      "displayName": "Monthly Revenue Trend",
+      "queryLines": [
+        "SELECT\n",
+        "  order_purchase_date AS order_purchase_date,\n",
+        "  date_format(order_purchase_date, 'yyyy-MM') AS year_month,\n",
+        "  ROUND(SUM(order_revenue), 2) AS product_revenue,\n",
+        "  COUNT(*) AS order_count\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_orders\n",
+        "GROUP BY\n",
+        "  1,\n",
+        "  2\n",
+        "ORDER BY\n",
+        "  1"
+      ]
+    },
+    {
+      "name": "monthly_volume",
+      "displayName": "Monthly Order Volume",
+      "queryLines": [
+        "SELECT\n",
+        "  order_purchase_date,\n",
+        "  year_month,\n",
+        "  metric_type,\n",
+        "  order_count\n",
+        "FROM\n",
+        "  (\n",
+        "    SELECT\n",
+        "      order_purchase_date AS order_purchase_date,\n",
+        "      date_format(order_purchase_date, 'yyyy-MM') AS year_month,\n",
+        "      'Total Orders' AS metric_type,\n",
+        "      COUNT(*) AS order_count\n",
+        "    FROM\n",
+        "      ecommerce_data.gold.fact_orders\n",
+        "    GROUP BY\n",
+        "      1,\n",
+        "      2\n",
+        "    UNION ALL\n",
+        "    SELECT\n",
+        "      order_purchase_date AS order_purchase_date,\n",
+        "      date_format(order_purchase_date, 'yyyy-MM') AS year_month,\n",
+        "      'Delivered Orders' AS metric_type,\n",
+        "      COUNT(\n",
+        "        CASE\n",
+        "          WHEN order_status = 'delivered' THEN 1\n",
+        "        END\n",
+        "      ) AS order_count\n",
+        "    FROM\n",
+        "      ecommerce_data.gold.fact_orders\n",
+        "    GROUP BY\n",
+        "      1,\n",
+        "      2\n",
+        "  )\n",
+        "ORDER BY\n",
+        "  order_purchase_date"
+      ]
+    },
+    {
+      "name": "order_status",
+      "displayName": "Order Status Distribution",
+      "queryLines": [
+        "SELECT\n",
+        "  order_purchase_date AS order_purchase_date,\n",
+        "  order_status,\n",
+        "  COUNT(*) AS order_count\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_orders\n",
+        "GROUP BY\n",
+        "  1,\n",
+        "  2"
+      ]
+    },
+    {
+      "name": "delivery_perf",
+      "displayName": "Delivery Performance",
+      "queryLines": [
+        "SELECT\n",
+        "  order_purchase_date AS order_purchase_date,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN\n",
+        "        order_status = 'delivered'\n",
+        "        AND order_delivered_customer_date IS NOT NULL\n",
+        "      THEN\n",
+        "        1\n",
+        "    END\n",
+        "  ) AS delivered_with_valid_date,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN\n",
+        "        order_status = 'delivered'\n",
+        "        AND order_delivered_customer_date IS NULL\n",
+        "      THEN\n",
+        "        1\n",
+        "    END\n",
+        "  ) AS delivered_missing_date,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN is_late_delivery = true THEN 1\n",
+        "    END\n",
+        "  ) AS late_deliveries,\n",
+        "  ROUND(\n",
+        "    COUNT(\n",
+        "      CASE\n",
+        "        WHEN is_late_delivery = true THEN 1\n",
+        "      END\n",
+        "    )\n",
+        "      * 100.0\n",
+        "      / NULLIF(\n",
+        "        COUNT(\n",
+        "          CASE\n",
+        "            WHEN\n",
+        "              order_status = 'delivered'\n",
+        "              AND order_delivered_customer_date IS NOT NULL\n",
+        "            THEN\n",
+        "              1\n",
+        "          END\n",
+        "        ),\n",
+        "        0\n",
+        "      ),\n",
+        "    2\n",
+        "  ) AS late_delivery_rate_pct,\n",
+        "  ROUND(\n",
+        "    AVG(\n",
+        "      CASE\n",
+        "        WHEN\n",
+        "          order_status = 'delivered'\n",
+        "          AND delivery_duration_days IS NOT NULL\n",
+        "        THEN\n",
+        "          delivery_duration_days\n",
+        "      END\n",
+        "    ),\n",
+        "    1\n",
+        "  ) AS avg_delivery_days\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_orders\n",
+        "GROUP BY\n",
+        "  1"
+      ]
+    },
+    {
+      "name": "top_categories",
+      "displayName": "Top Product Categories",
+      "queryLines": [
+        "SELECT\n",
+        "  COALESCE(product_category_name_english, 'Unknown / Untranslated') AS product_category,\n",
+        "  order_purchase_date AS order_purchase_date,\n",
+        "  SUM(price) AS product_revenue,\n",
+        "  COUNT(*) AS items_sold\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_order_items\n",
+        "GROUP BY\n",
+        "  1,\n",
+        "  2"
+      ]
+    },
+    {
+      "name": "monthly_detail",
+      "displayName": "Monthly Sales Detail",
+      "queryLines": [
+        "SELECT\n",
+        "  order_purchase_date AS order_purchase_date,\n",
+        "  date_format(order_purchase_date, 'yyyy-MM') AS year_month,\n",
+        "  ROUND(SUM(order_revenue), 2) AS product_revenue,\n",
+        "  ROUND(SUM(order_freight), 2) AS freight_value,\n",
+        "  ROUND(SUM(order_total_value), 2) AS total_value_incl_freight,\n",
+        "  COUNT(*) AS order_count,\n",
+        "  COUNT(\n",
+        "    CASE\n",
+        "      WHEN order_status = 'delivered' THEN 1\n",
+        "    END\n",
+        "  ) AS delivered_count,\n",
+        "  ROUND(SUM(order_revenue) / COUNT(*), 2) AS avg_order_value\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_orders\n",
+        "GROUP BY\n",
+        "  1,\n",
+        "  2\n",
+        "ORDER BY\n",
+        "  1"
+      ]
+    },
+    {
+      "name": "date_filter",
+      "displayName": "Date Filter Source",
+      "queryLines": [
+        "SELECT DISTINCT\n",
+        "  order_purchase_date\n",
+        "FROM\n",
+        "  ecommerce_data.gold.fact_orders\n",
+        "WHERE\n",
+        "  order_purchase_date IS NOT NULL\n",
+        "ORDER BY\n",
+        "  order_purchase_date"
+      ]
+    },
+    {
+      "name": "product_sales",
+      "displayName": "Product Sales (Item Grain)",
+      "config": {
+        "source": "ecommerce_data.gold.fact_order_items",
+        "measures": [
+          {
+            "name": "product_revenue",
+            "expr": "SUM(price)",
+            "displayName": "Product Revenue",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              },
+              "abbreviation": "compact"
+            }
+          },
+          {
+            "name": "total_freight",
+            "expr": "SUM(freight_value)",
+            "displayName": "Freight Value",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              },
+              "abbreviation": "compact"
+            }
+          },
+          {
+            "name": "items_sold",
+            "expr": "COUNT(*)",
+            "displayName": "Items Sold"
+          },
+          {
+            "name": "unique_orders",
+            "expr": "COUNT(DISTINCT order_id)",
+            "displayName": "Unique Orders"
+          },
+          {
+            "name": "avg_selling_price",
+            "expr": "SUM(price) / NULLIF(COUNT(*), 0)",
+            "displayName": "Avg Selling Price",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "avg_order_value",
+            "expr": "SUM(price) / NULLIF(COUNT(DISTINCT order_id), 0)",
+            "displayName": "Avg Order Value",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "delivered_orders",
+            "expr": "COUNT(DISTINCT CASE WHEN order_status = 'delivered' THEN order_id END)",
+            "displayName": "Delivered Orders"
+          },
+          {
+            "name": "avg_delivery_days",
+            "expr": "AVG(CASE WHEN order_status = 'delivered' AND delivery_duration_days IS NOT NULL THEN delivery_duration_days END)",
+            "displayName": "Avg Delivery Days",
+            "format": {
+              "type": "number",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 1.0
+              }
+            }
+          },
+          {
+            "name": "total_item_value",
+            "expr": "SUM(total_item_value)",
+            "displayName": "Total Item Value",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              },
+              "abbreviation": "compact"
+            }
+          },
+          {
+            "name": "revenue_share",
+            "expr": "MEASURE(product_revenue) / NULLIF(ANY_VALUE(total_revenue_all), 0)",
+            "displayName": "Revenue Share",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          }
+        ],
+        "version": "1.1",
+        "comment": "Product-level sales metrics at the order-item grain",
+        "dimensions": [
+          {
+            "name": "product_id",
+            "expr": "product_id",
+            "displayName": "Product ID"
+          },
+          {
+            "name": "product_category",
+            "expr": "COALESCE(product_category_name_english, 'Unknown')",
+            "displayName": "Product Category"
+          },
+          {
+            "name": "seller_id",
+            "expr": "seller_id",
+            "displayName": "Seller ID"
+          },
+          {
+            "name": "order_id",
+            "expr": "order_id",
+            "displayName": "Order ID"
+          },
+          {
+            "name": "order_status",
+            "expr": "order_status",
+            "displayName": "Order Status"
+          },
+          {
+            "name": "order_purchase_date",
+            "expr": "order_purchase_date",
+            "displayName": "Order Purchase Date"
+          },
+          {
+            "name": "seller_city",
+            "expr": "seller_city",
+            "displayName": "Seller City"
+          },
+          {
+            "name": "seller_state",
+            "expr": "seller_state",
+            "displayName": "Seller State"
+          },
+          {
+            "name": "total_revenue_all",
+            "expr": "SUM(price) OVER ()",
+            "displayName": "Total Revenue All Products"
+          }
+        ]
+      }
+    },
+    {
+      "name": "products_dim",
+      "displayName": "Product Attributes",
+      "config": {
+        "version": "1.1",
+        "source": "ecommerce_data.gold.dim_products",
+        "comment": "Product dimension attributes for analysis",
+        "dimensions": [
+          {
+            "name": "product_id",
+            "expr": "product_id",
+            "displayName": "Product ID"
+          },
+          {
+            "name": "product_category",
+            "expr": "COALESCE(product_category_name_english, 'Unknown')",
+            "displayName": "Product Category"
+          },
+          {
+            "name": "product_weight_g",
+            "expr": "product_weight_g",
+            "displayName": "Product Weight (g)"
+          },
+          {
+            "name": "product_volume_cm3",
+            "expr": "product_volume_cm3",
+            "displayName": "Product Volume (cm3)"
+          },
+          {
+            "name": "product_photos_qty",
+            "expr": "product_photos_qty",
+            "displayName": "Photos Qty"
+          },
+          {
+            "name": "product_description_length",
+            "expr": "product_description_length",
+            "displayName": "Description Length"
+          },
+          {
+            "name": "product_name_length",
+            "expr": "product_name_length",
+            "displayName": "Name Length"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pop_comparison",
+      "displayName": "Period-over-Period Comparison",
+      "config": {
+        "source": "SELECT\n  CAST(DATE_TRUNC('month', order_purchase_date) AS DATE) AS month_date,\n  SUM(price) AS revenue,\n  COUNT(*) AS items_sold,\n  SUM(price) / NULLIF(COUNT(*), 0) AS avg_selling_price\nFROM ecommerce_data.gold.fact_order_items WHERE order_purchase_date IS NOT NULL GROUP BY 1\n",
+        "measures": [
+          {
+            "name": "revenue",
+            "expr": "SUM(revenue)",
+            "displayName": "Revenue",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              },
+              "abbreviation": "compact"
+            }
+          },
+          {
+            "name": "items_sold",
+            "expr": "SUM(items_sold)",
+            "displayName": "Items Sold"
+          },
+          {
+            "name": "avg_selling_price",
+            "expr": "SUM(revenue) / NULLIF(SUM(items_sold), 0)",
+            "displayName": "Avg Selling Price",
+            "format": {
+              "type": "currency",
+              "currencyCode": "BRL",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "revenue_growth",
+            "expr": "(SUM(revenue) - ANY_VALUE(prev_revenue)) / NULLIF(ANY_VALUE(prev_revenue), 0)",
+            "displayName": "Revenue Growth",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "items_growth",
+            "expr": "(SUM(items_sold) - ANY_VALUE(prev_items)) / NULLIF(ANY_VALUE(prev_items), 0)",
+            "displayName": "Items Growth",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          },
+          {
+            "name": "asp_growth",
+            "expr": "(MEASURE(avg_selling_price) - ANY_VALUE(prev_asp)) / NULLIF(ANY_VALUE(prev_asp), 0)",
+            "displayName": "ASP Growth",
+            "format": {
+              "type": "percentage",
+              "decimalPlaces": {
+                "type": "exact",
+                "places": 2.0
+              }
+            }
+          }
+        ],
+        "version": "1.1",
+        "comment": "Month-over-month period-over-period comparison",
+        "dimensions": [
+          {
+            "name": "order_purchase_date",
+            "expr": "month_date",
+            "displayName": "Month"
+          },
+          {
+            "name": "prev_revenue",
+            "expr": "LAG(revenue) OVER (ORDER BY month_date)",
+            "displayName": "Previous Period Revenue"
+          },
+          {
+            "name": "prev_items",
+            "expr": "LAG(items_sold) OVER (ORDER BY month_date)",
+            "displayName": "Previous Period Items"
+          },
+          {
+            "name": "prev_asp",
+            "expr": "LAG(avg_selling_price) OVER (ORDER BY month_date)",
+            "displayName": "Previous Period ASP"
+          }
+        ]
+      }
+    }
+  ],
+  "relationshipGraphs": [
+    {
+      "sources": [
+        {
+          "name": "Executive_KPIs",
+          "datasetName": "exec_kpis"
+        },
+        {
+          "name": "Monthly_Revenue_Trend",
+          "datasetName": "monthly_revenue"
+        },
+        {
+          "name": "Monthly_Order_Volume",
+          "datasetName": "monthly_volume"
+        },
+        {
+          "name": "Order_Status_Distribution",
+          "datasetName": "order_status"
+        },
+        {
+          "name": "Delivery_Performance",
+          "datasetName": "delivery_perf"
+        },
+        {
+          "name": "Top_Product_Categories",
+          "datasetName": "top_categories"
+        },
+        {
+          "name": "Monthly_Sales_Detail",
+          "datasetName": "monthly_detail"
+        },
+        {
+          "name": "Date_Filter_Source",
+          "datasetName": "date_filter"
+        },
+        {
+          "name": "Product_Sales_Item_Grain",
+          "datasetName": "product_sales"
+        },
+        {
+          "name": "Product_Attributes",
+          "datasetName": "products_dim"
+        },
+        {
+          "name": "PeriodoverPeriod_Comparison",
+          "datasetName": "pop_comparison"
+        }
+      ],
+      "relationships": [
+        {
+          "name": "relationship_0",
+          "from": "Product_Sales_Item_Grain",
+          "to": "Product_Attributes",
+          "on": "`Product_Sales_Item_Grain`.`product_id` = `Product_Attributes`.`product_id`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        },
+        {
+          "name": "relationship_1",
+          "from": "Monthly_Revenue_Trend",
+          "to": "Executive_KPIs",
+          "on": "`Monthly_Revenue_Trend`.`order_purchase_date` = `Executive_KPIs`.`order_purchase_date`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        },
+        {
+          "name": "relationship_2",
+          "from": "Monthly_Order_Volume",
+          "to": "Executive_KPIs",
+          "on": "`Monthly_Order_Volume`.`order_purchase_date` = `Executive_KPIs`.`order_purchase_date`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        },
+        {
+          "name": "relationship_3",
+          "from": "Order_Status_Distribution",
+          "to": "Executive_KPIs",
+          "on": "`Order_Status_Distribution`.`order_purchase_date` = `Executive_KPIs`.`order_purchase_date`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        },
+        {
+          "name": "relationship_4",
+          "from": "Top_Product_Categories",
+          "to": "Executive_KPIs",
+          "on": "`Top_Product_Categories`.`order_purchase_date` = `Executive_KPIs`.`order_purchase_date`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        },
+        {
+          "name": "relationship_5",
+          "from": "Delivery_Performance",
+          "to": "Executive_KPIs",
+          "on": "`Delivery_Performance`.`order_purchase_date` = `Executive_KPIs`.`order_purchase_date`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        },
+        {
+          "name": "relationship_6",
+          "from": "Monthly_Sales_Detail",
+          "to": "Executive_KPIs",
+          "on": "`Monthly_Sales_Detail`.`order_purchase_date` = `Executive_KPIs`.`order_purchase_date`",
+          "cardinality": "CARDINALITY_MANY_TO_ONE"
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "47559cee",
+      "displayName": "Executive Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "kpi_product_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Executive_KPIs__product_revenue)",
+                      "expression": "SUM(`Executive_KPIs`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Product Revenue",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "format": {
+                "numberFormat": {
+                  "formatType": "numeral",
+                  "format": "0.[00]a"
+                }
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Executive_KPIs__product_revenue)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_total_orders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Executive_KPIs__total_orders)",
+                      "expression": "SUM(`Executive_KPIs`.`total_orders`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Total Orders",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "format": {
+                "numberFormat": {
+                  "formatType": "numeral",
+                  "format": "0.[00]a"
+                }
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Executive_KPIs__total_orders)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_delivered_orders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Executive_KPIs__delivered_orders)",
+                      "expression": "SUM(`Executive_KPIs`.`delivered_orders`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Delivered Orders",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "format": {
+                "numberFormat": {
+                  "formatType": "numeral",
+                  "format": "0.[00]a"
+                }
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Executive_KPIs__delivered_orders)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_items_sold",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Executive_KPIs__items_sold)",
+                      "expression": "SUM(`Executive_KPIs`.`items_sold`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Items Sold",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "format": {
+                "numberFormat": {
+                  "formatType": "numeral",
+                  "format": "0.[00]a"
+                }
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Executive_KPIs__items_sold)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "monthly_revenue_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Monthly_Revenue_Trend__year_month",
+                      "expression": "`Monthly_Revenue_Trend`.`year_month`"
+                    },
+                    {
+                      "name": "sum(Monthly_Revenue_Trend__product_revenue)",
+                      "expression": "SUM(`Monthly_Revenue_Trend`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Monthly Product Revenue Trend",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "Monthly_Revenue_Trend__year_month",
+                  "displayName": "year_month",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(Monthly_Revenue_Trend__product_revenue)",
+                  "displayName": "product_revenue",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Monthly_Revenue_Trend__year_month",
+                  "displayName": "year_month",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "monthly_order_volume",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Monthly_Order_Volume__metric_type",
+                      "expression": "`Monthly_Order_Volume`.`metric_type`"
+                    },
+                    {
+                      "name": "Monthly_Order_Volume__year_month",
+                      "expression": "`Monthly_Order_Volume`.`year_month`"
+                    },
+                    {
+                      "name": "sum(Monthly_Order_Volume__order_count)",
+                      "expression": "SUM(`Monthly_Order_Volume`.`order_count`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Monthly Order Volume",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Monthly_Order_Volume__year_month",
+                  "displayName": "year_month",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(Monthly_Order_Volume__order_count)",
+                  "displayName": "order_count",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Monthly_Order_Volume__metric_type",
+                  "displayName": "metric_type",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "order_status_pie",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "sum(Order_Status_Distribution__order_count)",
+                      "expression": "SUM(`Order_Status_Distribution`.`order_count`)"
+                    },
+                    {
+                      "name": "Order_Status_Distribution__order_status",
+                      "expression": "`Order_Status_Distribution`.`order_status`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Order Status Distribution",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "sum(Order_Status_Distribution__order_count)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "order_count"
+                },
+                "color": {
+                  "fieldName": "Order_Status_Distribution__order_status",
+                  "displayName": "order_status",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "delivery_performance",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Delivery_Performance__order_purchase_date",
+                      "expression": "`Delivery_Performance`.`order_purchase_date`"
+                    },
+                    {
+                      "name": "Delivery_Performance__delivered_with_valid_date",
+                      "expression": "`Delivery_Performance`.`delivered_with_valid_date`"
+                    },
+                    {
+                      "name": "Delivery_Performance__delivered_missing_date",
+                      "expression": "`Delivery_Performance`.`delivered_missing_date`"
+                    },
+                    {
+                      "name": "Delivery_Performance__late_deliveries",
+                      "expression": "`Delivery_Performance`.`late_deliveries`"
+                    },
+                    {
+                      "name": "Delivery_Performance__late_delivery_rate_pct",
+                      "expression": "`Delivery_Performance`.`late_delivery_rate_pct`"
+                    },
+                    {
+                      "name": "Delivery_Performance__avg_delivery_days",
+                      "expression": "`Delivery_Performance`.`avg_delivery_days`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Delivery Performance",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "Delivery_Performance__order_purchase_date"
+                  },
+                  {
+                    "fieldName": "Delivery_Performance__delivered_with_valid_date"
+                  },
+                  {
+                    "fieldName": "Delivery_Performance__delivered_missing_date"
+                  },
+                  {
+                    "fieldName": "Delivery_Performance__late_deliveries"
+                  },
+                  {
+                    "fieldName": "Delivery_Performance__late_delivery_rate_pct"
+                  },
+                  {
+                    "fieldName": "Delivery_Performance__avg_delivery_days"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 14,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "top_categories_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Top_Product_Categories__product_category",
+                      "expression": "`Top_Product_Categories`.`product_category`"
+                    },
+                    {
+                      "name": "sum(Top_Product_Categories__product_revenue)",
+                      "expression": "SUM(`Top_Product_Categories`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Top 15 Product Categories by Revenue",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Top_Product_Categories__product_category",
+                  "displayName": "product_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(Top_Product_Categories__product_revenue)",
+                  "displayName": "product_revenue",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Top_Product_Categories__product_category",
+                  "displayName": "product_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 19,
+            "width": 12,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "monthly_sales_detail",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Monthly_Sales_Detail__order_purchase_date",
+                      "expression": "`Monthly_Sales_Detail`.`order_purchase_date`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__year_month",
+                      "expression": "`Monthly_Sales_Detail`.`year_month`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__product_revenue",
+                      "expression": "`Monthly_Sales_Detail`.`product_revenue`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__freight_value",
+                      "expression": "`Monthly_Sales_Detail`.`freight_value`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__total_value_incl_freight",
+                      "expression": "`Monthly_Sales_Detail`.`total_value_incl_freight`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__order_count",
+                      "expression": "`Monthly_Sales_Detail`.`order_count`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__delivered_count",
+                      "expression": "`Monthly_Sales_Detail`.`delivered_count`"
+                    },
+                    {
+                      "name": "Monthly_Sales_Detail__avg_order_value",
+                      "expression": "`Monthly_Sales_Detail`.`avg_order_value`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Monthly Sales Detail",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "Monthly_Sales_Detail__order_purchase_date"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__year_month"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__product_revenue"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__freight_value"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__total_value_incl_freight"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__order_count"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__delivered_count"
+                  },
+                  {
+                    "fieldName": "Monthly_Sales_Detail__avg_order_value"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 12,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "metric_definitions",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Metric Definitions & Caveats\n",
+                "\n",
+                "| Metric | Definition |\n",
+                "|---|---|\n",
+                "| **Product Revenue** | SUM of item `price`, excludes freight |\n",
+                "| **Freight Value** | SUM of `freight_value` |\n",
+                "| **Total Value (incl. freight)** | SUM of `price + freight_value` |\n",
+                "| **Total Orders** | COUNT of all orders (all statuses) |\n",
+                "| **Delivered Orders** | COUNT WHERE `order_status = 'delivered'` |\n",
+                "| **Delivery Rate** | Delivered orders / Total orders × 100 |\n",
+                "| **AOV** | Product revenue / Total orders (all statuses) |\n",
+                "| **Items Sold** | Total order-item lines from `fact_order_items` |\n",
+                "| **Late Delivery Rate** | Late deliveries / Delivered orders with valid dates (96,470) |\n",
+                "| **Avg Delivery Days** | AVG of `delivery_duration_days` for delivered orders only |\n",
+                "\n",
+                "**Notes:** 8 delivered orders have missing delivery timestamps (excluded from delivery duration & late delivery rate). 775 orders have no items (null revenue). 3 product categories lack English translations; 610 products have null categories. All revenue uses `fact_orders.order_revenue` (order grain, excludes freight) — not `agg_daily_sales.daily_revenue` which includes freight."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 34,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "date_range_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c42a7f5e107890d70941cbcc5d32_order_purchase_date",
+                "query": {
+                  "datasetName": "exec_kpis",
+                  "fields": [
+                    {
+                      "name": "order_purchase_date",
+                      "expression": "`order_purchase_date`"
+                    },
+                    {
+                      "name": "order_purchase_date_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Date Range",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "order_purchase_date",
+                    "queryName": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c42a7f5e107890d70941cbcc5d32_order_purchase_date"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_aov_final",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Executive_KPIs__aov)",
+                      "expression": "MEASURE(`Executive_KPIs`.`aov`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Average Order Value",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "format": {
+                "numberFormat": {
+                  "formatType": "numeral",
+                  "format": "0.[00]a"
+                }
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Executive_KPIs__aov)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_delivery_rate_final",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Executive_KPIs__delivery_rate)",
+                      "expression": "MEASURE(`Executive_KPIs`.`delivery_rate`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Delivery Rate",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Executive_KPIs__delivery_rate)",
+                  "formatTemplate": "{{ @formatted }}%",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 10,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "product_performance",
+      "displayName": "Product Performance",
+      "layout": [
+        {
+          "widget": {
+            "name": "date_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_order_purchase_date",
+                "query": {
+                  "datasetName": "product_sales",
+                  "fields": [
+                    {
+                      "name": "order_purchase_date",
+                      "expression": "`order_purchase_date`"
+                    },
+                    {
+                      "name": "order_purchase_date_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Date Range"
+              },
+              "widgetType": "filter-date-range-picker",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "order_purchase_date",
+                    "queryName": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_order_purchase_date"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "product_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_product_id",
+                "query": {
+                  "datasetName": "product_sales",
+                  "fields": [
+                    {
+                      "name": "product_id",
+                      "expression": "`product_id`"
+                    },
+                    {
+                      "name": "product_id_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Products"
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_id",
+                    "queryName": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_product_id"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "category_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_product_category",
+                "query": {
+                  "datasetName": "product_sales",
+                  "fields": [
+                    {
+                      "name": "product_category",
+                      "expression": "`product_category`"
+                    },
+                    {
+                      "name": "product_category_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Category"
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_category",
+                    "queryName": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_product_category"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "seller_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_seller_id",
+                "query": {
+                  "datasetName": "product_sales",
+                  "fields": [
+                    {
+                      "name": "seller_id",
+                      "expression": "`seller_id`"
+                    },
+                    {
+                      "name": "seller_id_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "showTitle": true,
+                "title": "Select Seller"
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "seller_id",
+                    "queryName": "dashboards/01f1c364b37e1bdaada505546ff2e6cd/datasets/01f1c4f8d69213388d7cf85be67d7de0_seller_id"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 2,
+            "width": 4,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__product_revenue)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Product Revenue"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__product_revenue)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_items",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__items_sold)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`items_sold`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Items Sold"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__items_sold)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_orders",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__unique_orders)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`unique_orders`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Unique Orders"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__unique_orders)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_asp",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__avg_selling_price)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`avg_selling_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Selling Price"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__avg_selling_price)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 4,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_aov",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__avg_order_value)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`avg_order_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Order Value"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__avg_order_value)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_freight",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__total_freight)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`total_freight`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Freight Value"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__total_freight)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 6,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_revenue_share",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__revenue_share)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`revenue_share`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue Share"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__revenue_share)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "kpi_delivery_days",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__avg_delivery_days)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`avg_delivery_days`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Delivery Days"
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__avg_delivery_days)",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 6,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__product_id",
+                      "expression": "`Product_Sales_Item_Grain`.`product_id`"
+                    },
+                    {
+                      "name": "monthly(Product_Sales_Item_Grain__order_purchase_date)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `Product_Sales_Item_Grain`.`order_purchase_date`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__product_revenue)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Product Revenue Over Time"
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(Product_Sales_Item_Grain__order_purchase_date)",
+                  "displayName": "Month",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__product_revenue)",
+                  "displayName": "product_revenue",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Product_Sales_Item_Grain__product_id",
+                  "displayName": "product_id",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "items_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__product_id",
+                      "expression": "`Product_Sales_Item_Grain`.`product_id`"
+                    },
+                    {
+                      "name": "monthly(Product_Sales_Item_Grain__order_purchase_date)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `Product_Sales_Item_Grain`.`order_purchase_date`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__items_sold)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`items_sold`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Items Sold Over Time"
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(Product_Sales_Item_Grain__order_purchase_date)",
+                  "displayName": "Month",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__items_sold)",
+                  "displayName": "items_sold",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Product_Sales_Item_Grain__product_id",
+                  "displayName": "product_id",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "pop_comparison_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "PeriodoverPeriod_Comparison__order_purchase_date",
+                      "expression": "`PeriodoverPeriod_Comparison`.`order_purchase_date`"
+                    },
+                    {
+                      "name": "measure(PeriodoverPeriod_Comparison__revenue)",
+                      "expression": "MEASURE(`PeriodoverPeriod_Comparison`.`revenue`)"
+                    },
+                    {
+                      "name": "PeriodoverPeriod_Comparison__prev_revenue",
+                      "expression": "`PeriodoverPeriod_Comparison`.`prev_revenue`"
+                    },
+                    {
+                      "name": "measure(PeriodoverPeriod_Comparison__revenue_growth)",
+                      "expression": "MEASURE(`PeriodoverPeriod_Comparison`.`revenue_growth`)"
+                    },
+                    {
+                      "name": "measure(PeriodoverPeriod_Comparison__items_sold)",
+                      "expression": "MEASURE(`PeriodoverPeriod_Comparison`.`items_sold`)"
+                    },
+                    {
+                      "name": "PeriodoverPeriod_Comparison__prev_items",
+                      "expression": "`PeriodoverPeriod_Comparison`.`prev_items`"
+                    },
+                    {
+                      "name": "measure(PeriodoverPeriod_Comparison__items_growth)",
+                      "expression": "MEASURE(`PeriodoverPeriod_Comparison`.`items_growth`)"
+                    },
+                    {
+                      "name": "measure(PeriodoverPeriod_Comparison__avg_selling_price)",
+                      "expression": "MEASURE(`PeriodoverPeriod_Comparison`.`avg_selling_price`)"
+                    },
+                    {
+                      "name": "measure(PeriodoverPeriod_Comparison__asp_growth)",
+                      "expression": "MEASURE(`PeriodoverPeriod_Comparison`.`asp_growth`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Period-over-Period Comparison"
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "PeriodoverPeriod_Comparison__order_purchase_date"
+                  },
+                  {
+                    "fieldName": "measure(PeriodoverPeriod_Comparison__revenue)"
+                  },
+                  {
+                    "fieldName": "PeriodoverPeriod_Comparison__prev_revenue"
+                  },
+                  {
+                    "fieldName": "measure(PeriodoverPeriod_Comparison__revenue_growth)"
+                  },
+                  {
+                    "fieldName": "measure(PeriodoverPeriod_Comparison__items_sold)"
+                  },
+                  {
+                    "fieldName": "PeriodoverPeriod_Comparison__prev_items"
+                  },
+                  {
+                    "fieldName": "measure(PeriodoverPeriod_Comparison__items_growth)"
+                  },
+                  {
+                    "fieldName": "measure(PeriodoverPeriod_Comparison__avg_selling_price)"
+                  },
+                  {
+                    "fieldName": "measure(PeriodoverPeriod_Comparison__asp_growth)"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 13,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_vs_items_scatter",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__product_category",
+                      "expression": "`Product_Sales_Item_Grain`.`product_category`"
+                    },
+                    {
+                      "name": "Product_Sales_Item_Grain__product_id",
+                      "expression": "`Product_Sales_Item_Grain`.`product_id`"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__items_sold)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`items_sold`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__product_revenue)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Revenue vs Items Sold",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__items_sold)",
+                  "displayName": "Items Sold",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__product_revenue)",
+                  "displayName": "Product Revenue",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Product_Sales_Item_Grain__product_category",
+                  "displayName": "Category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "Product_Sales_Item_Grain__product_id",
+                    "displayName": "Product ID"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "product_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__product_id",
+                      "expression": "`Product_Sales_Item_Grain`.`product_id`"
+                    },
+                    {
+                      "name": "Product_Sales_Item_Grain__product_category",
+                      "expression": "`Product_Sales_Item_Grain`.`product_category`"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__product_revenue)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`product_revenue`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__items_sold)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`items_sold`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__unique_orders)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`unique_orders`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__avg_selling_price)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`avg_selling_price`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__total_freight)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`total_freight`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__revenue_share)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`revenue_share`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Product Performance Ranking"
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "Product_Sales_Item_Grain__product_id"
+                  },
+                  {
+                    "fieldName": "Product_Sales_Item_Grain__product_category"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__product_revenue)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__items_sold)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__unique_orders)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__avg_selling_price)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__total_freight)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__revenue_share)"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "category_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__product_category",
+                      "expression": "`Product_Sales_Item_Grain`.`product_category`"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__product_revenue)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue by Category"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Product_Sales_Item_Grain__product_category",
+                  "displayName": "product_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__product_revenue)",
+                  "displayName": "product_revenue",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Product_Sales_Item_Grain__product_category",
+                  "displayName": "product_category",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 23,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "seller_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__seller_id",
+                      "expression": "`Product_Sales_Item_Grain`.`seller_id`"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__product_revenue)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`product_revenue`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Revenue by Seller"
+              },
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Product_Sales_Item_Grain__seller_id",
+                  "displayName": "seller_id",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__product_revenue)",
+                  "displayName": "product_revenue",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "Product_Sales_Item_Grain__seller_id",
+                  "displayName": "seller_id",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 23,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "order_status_pie",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__items_sold)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`items_sold`)"
+                    },
+                    {
+                      "name": "Product_Sales_Item_Grain__order_status",
+                      "expression": "`Product_Sales_Item_Grain`.`order_status`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Order Status Breakdown"
+              },
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "measure(Product_Sales_Item_Grain__items_sold)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "items_sold"
+                },
+                "color": {
+                  "fieldName": "Product_Sales_Item_Grain__order_status",
+                  "displayName": "order_status",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 29,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "delivery_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "fields": [
+                    {
+                      "name": "Product_Sales_Item_Grain__order_status",
+                      "expression": "`Product_Sales_Item_Grain`.`order_status`"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__unique_orders)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`unique_orders`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__delivered_orders)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`delivered_orders`)"
+                    },
+                    {
+                      "name": "measure(Product_Sales_Item_Grain__avg_delivery_days)",
+                      "expression": "MEASURE(`Product_Sales_Item_Grain`.`avg_delivery_days`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": "Delivery Insights"
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "Product_Sales_Item_Grain__order_status"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__unique_orders)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__delivered_orders)"
+                  },
+                  {
+                    "fieldName": "measure(Product_Sales_Item_Grain__avg_delivery_days)"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 28,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "metric_defs",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Product Performance Dashboard — Metric Definitions & Limitations\n",
+                "\n",
+                "### Metrics\n",
+                "| Metric | Definition |\n",
+                "|---|---|\n",
+                "| **Product Revenue** | SUM(item `price`), excludes freight |\n",
+                "| **Freight Value** | SUM(`freight_value`) separately |\n",
+                "| **Total Item Value** | SUM(`price + freight_value`) |\n",
+                "| **Items Sold** | COUNT of order-item records (item grain) |\n",
+                "| **Unique Orders** | COUNT(DISTINCT `order_id`) containing selected products |\n",
+                "| **Avg Selling Price (ASP)** | Product Revenue / Items Sold |\n",
+                "| **Avg Order Value (AOV)** | Product Revenue / Unique Orders (only orders containing selected products) |\n",
+                "| **Revenue Share** | Selected products' revenue / total revenue for same date range |\n",
+                "| **Revenue Growth** | Month-over-month revenue change (current vs previous month) |\n",
+                "| **Avg Delivery Days** | AVG(`delivery_duration_days`) for delivered orders with valid dates |\n",
+                "\n",
+                "### Key Business Rules\n",
+                "* All revenue = SUM(price) **excludes freight**. Freight reported separately.\n",
+                "* Items counted at order-item grain; orders counted with COUNT(DISTINCT order_id).\n",
+                "* Trends use **order purchase date** (not delivery date).\n",
+                "* Canceled/unavailable orders are kept distinguishable from delivered orders.\n",
+                "* Revenue is **not** profit or margin — product cost data is not available.\n",
+                "* Low sales do not necessarily mean unprofitable — margin data may not exist.\n",
+                "\n",
+                "### Limitations\n",
+                "* **32,951 products** in catalog; product filter shows product_id (long hash). Use category filter to narrow results.\n",
+                "* **610 products** have null categories (shown as 'Unknown').\n",
+                "* **3 categories** lack English translations.\n",
+                "* Period-over-period growth is month-over-month. For custom date ranges, use the PoP table to compare individual months.\n",
+                "* Revenue Share denominator includes **all products** in the same date range, not just the selected category.\n",
+                "* Scatter plot shows one point per product; use filters to focus on specific products or categories.\n",
+                "* Same product can be sold by multiple sellers — seller comparisons reflect per-seller-item revenue.\n",
+                "* Null product IDs and missing categories are handled with COALESCE to 'Unknown'.\n",
+                "* Zero denominators handled with NULLIF to avoid division errors."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 34,
+            "width": 12,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
